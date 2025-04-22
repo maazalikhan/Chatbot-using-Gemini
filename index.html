@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AxInBot - Data Analysis Chatbot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/marked@12.0.0/marked.min.js"></script>
+    <script src="https://unpkg.com/dompurify@3.0.6/dist/purify.min.js"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-4xl bg-white rounded-xl shadow-lg">
+        <div class="flex flex-col h-[600px]">
+            <!-- Chat Header -->
+            <div class="bg-blue-600 text-white p-4 rounded-t-xl flex justify-between items-center">
+                <h1 class="text-xl font-bold">AxInBot - Data Analysis Assistant</h1>
+                <button id="clearHistory" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded">
+                    Clear History
+                </button>
+            </div>
+
+            <!-- Chat Messages Container -->
+            <div id="chatContainer" class="flex-grow overflow-y-auto p-4 space-y-4">
+                <div class="text-center text-gray-500 mb-4">
+                    Ask me about your energy infrastructure data
+                </div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="bg-gray-100 p-4 border-t">
+                <div class="flex space-x-2">
+                    <input 
+                        type="text" 
+                        id="userInput" 
+                        placeholder="Ask a data-related question..." 
+                        class="flex-grow p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                    <button 
+                        id="sendButton" 
+                        class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
+                    >
+                        Send
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Custom markdown renderer
+        const renderer = new marked.Renderer();
+        renderer.list = function(body, ordered, start) {
+            const type = ordered ? 'ol' : 'ul';
+            const startatt = (ordered && start !== 1) ? ` start="${start}"` : '';
+            return `<${type}${startatt} class="pl-5 list-disc">${body}</${type}>`;
+        };
+
+        renderer.listitem = function(text, task, checked) {
+            if (text.startsWith('•')) {
+                return `<li class="mb-2">${text.replace(/^•\s*/, '')}</li>`;
+            } else if (text.startsWith('‣')) {
+                return `<li class="mb-2 pl-4">${text.replace(/^‣\s*/, '')}</li>`;
+            }
+            return `<li>${text}</li>`;
+        };
+
+        marked.setOptions({
+            renderer: renderer,
+            breaks: true
+        });
+
+        const chatContainer = document.getElementById('chatContainer');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        const clearHistoryButton = document.getElementById('clearHistory');
+
+        function createUserMessageElement(message) {
+            const messageEl = document.createElement('div');
+            messageEl.classList.add('text-right');
+            messageEl.innerHTML = `
+                <div class="inline-block bg-blue-500 text-white p-3 rounded-lg max-w-[80%]">
+                    ${message}
+                </div>
+            `;
+            return messageEl;
+        }
+
+        function createBotMessageElement(response) {
+            const messageEl = document.createElement('div');
+            messageEl.classList.add('text-left', 'bot-message');
+
+            // Handle both analysis and response fields
+            const messageContent = response.response || response.analysis || 'No response available';
+            
+            // Sanitize and parse markdown for all message types
+            const sanitizedContent = DOMPurify.sanitize(marked.parse(messageContent));
+
+            if (response.type === 'analysis' && response.results && response.results.length > 0) {
+                // Unique ID for this message's table toggle
+                const toggleId = `table-toggle-${Date.now()}`;
+
+                messageEl.innerHTML = `
+                    <div class="bg-gray-100 p-3 rounded-lg max-w-[80%] relative">
+                        <div class="markdown-content">${sanitizedContent}</div>
+                        
+                        <div class="flex items-center justify-end mt-2">
+                            <label class="flex items-center cursor-pointer text-sm mr-2">
+                                <span class="mr-2">Show Table</span>
+                                <input type="checkbox" id="${toggleId}" class="hidden table-toggle">
+                                <div class="toggle-switch w-10 h-5 bg-gray-300 rounded-full relative">
+                                    <div class="toggle-circle w-5 h-5 bg-white rounded-full absolute top-0 left-0 transition-transform"></div>
+                                </div>
+                            </label>
+                        </div>
+                        <div class="table-container hidden overflow-x-auto mt-2">
+                            <table class="w-full border-collapse">
+                                <thead>
+                                    <tr class="bg-gray-200">
+                                        ${Object.keys(response.results[0]).map(key => 
+                                            `<th class="border p-2">${key}</th>`
+                                        ).join('')}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${response.results.map(row => `
+                                        <tr>
+                                            ${Object.values(row).map(value => 
+                                                `<td class="border p-2">${value}</td>`
+                                            ).join('')}
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+
+                // Add event listener after element is created
+                setTimeout(() => {
+                    const toggle = document.getElementById(toggleId);
+                    const tableContainer = messageEl.querySelector('.table-container');
+                    const toggleSwitch = messageEl.querySelector('.toggle-switch');
+                    const toggleCircle = messageEl.querySelector('.toggle-circle');
+
+                    toggle.addEventListener('change', function() {
+                        if (this.checked) {
+                            tableContainer.classList.remove('hidden');
+                            toggleCircle.style.transform = 'translateX(100%)';
+                            toggleSwitch.classList.add('bg-blue-400');
+                        } else {
+                            tableContainer.classList.add('hidden');
+                            toggleCircle.style.transform = 'translateX(0)';
+                            toggleSwitch.classList.remove('bg-blue-400');
+                        }
+                        scrollToBottom();
+                    });
+                }, 0);
+            } else {
+                // Simple message without table for both analysis and self_aware types
+                messageEl.innerHTML = `
+                    <div class="bg-gray-100 p-3 rounded-lg max-w-[80%]">
+                        ${sanitizedContent}
+                    </div>
+                `;
+            }
+
+            return messageEl;
+        }
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            // Clear input
+            userInput.value = '';
+
+            // Add user message
+            chatContainer.appendChild(createUserMessageElement(message));
+            scrollToBottom();
+
+            try {
+                const response = await fetch('/ask', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                const data = await response.json();
+
+                // Add bot response
+                chatContainer.appendChild(createBotMessageElement(data));
+                scrollToBottom();
+            } catch (error) {
+                console.error('Error:', error);
+                const errorMessage = createBotMessageElement({
+                    type: 'self_aware',
+                    response: 'Sorry, there was an error processing your request.'
+                });
+                chatContainer.appendChild(errorMessage);
+                scrollToBottom();
+            }
+        }
+
+        async function clearHistory() {
+            try {
+                await fetch('/clear_history', { method: 'POST' });
+                chatContainer.innerHTML = `
+                    <div class="text-center text-gray-500 mb-4">
+                        Chat history cleared. Ask me about your energy infrastructure data.
+                    </div>
+                `;
+            } catch (error) {
+                console.error('Error clearing history:', error);
+            }
+        }
+
+        function scrollToBottom() {
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Event Listeners
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+        clearHistoryButton.addEventListener('click', clearHistory);
+    </script>
+</body>
+</html>
