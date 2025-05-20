@@ -25,7 +25,7 @@ app = create_flask_app()
 services = initialize_services()
 
 # Initialize OpenAI client
-client = OpenAI(api_key="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")
+client = OpenAI(api_key="OPEN API KEY")
 # Initialize Metadata Loader
 metadata_loader = MetadataLoader(services['storage_client'])
 metadata = metadata_loader.load_metadata_from_gcs('metadata_siteinfra', 'testingmeta.json')
